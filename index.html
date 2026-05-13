@@ -399,10 +399,10 @@
 
 <script>
 const FIELD_ALIASES = {
-  telefone: ['telefone', 'phone', 'fone', 'celular', 'whatsapp', 'tel'],
-  nome_estabelecimento: ['nome_estabelecimento', 'estabelecimento', 'nome', 'empresa', 'razao_social', 'razão_social'],
+  telefone: ['telefone', 'phone', 'fone', 'celular', 'whatsapp', 'tel', 'telefones'],
+  nome_estabelecimento: ['nome_estabelecimento', 'estabelecimento', 'nome', 'empresa', 'razao_social', 'razão_social', 'razao social', 'razão social', 'nome fantasia', 'nome_fantasia'],
   cnpj: ['cnpj'],
-  nome_proprietario: ['nome_proprietario', 'proprietario', 'proprietário', 'responsavel', 'responsável']
+  nome_proprietario: ['nome_proprietario', 'proprietario', 'proprietário', 'responsavel', 'responsável', 'socios', 'sócios']
 };
 
 function normalize(key) {
@@ -419,12 +419,27 @@ function mapColumns(headers) {
       }
     }
   });
+
+  // Fallback por posição para o formato padrão do Excel exportado
+  // Col A(0)=CNPJ, Col D(3)=Razao Social, Col T(19)=Telefones
+  if (map.cnpj === undefined && headers.length > 0) map.cnpj = 0;
+  if (map.nome_estabelecimento === undefined && headers.length > 3) map.nome_estabelecimento = 3;
+  if (map.telefone === undefined && headers.length > 19) map.telefone = 19;
+
   return map;
+}
+
+function extractFirstPhone(raw) {
+  if (!raw) return '';
+  return String(raw).split(',')[0].trim();
 }
 
 function normalizePhone(raw) {
   if (!raw) return { number: null, fixed: false };
-  
+
+  // Pega só o primeiro número se vier mais de um separado por vírgula
+  raw = extractFirstPhone(raw);
+
   // Remove tudo que não é dígito
   let digits = String(raw).replace(/\D/g, '');
   
