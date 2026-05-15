@@ -378,10 +378,15 @@
         <thead>
           <tr>
             <th>#</th>
-            <th>Telefone normalizado</th>
+            <th>Telefone</th>
             <th>Nome Estabelecimento</th>
             <th>CNPJ</th>
-            <th>Nome Proprietário</th>
+            <th>Logradouro</th>
+            <th>Nº</th>
+            <th>CEP</th>
+            <th>Bairro</th>
+            <th>Município</th>
+            <th>UF</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -399,10 +404,16 @@
 
 <script>
 const FIELD_ALIASES = {
-  telefone: ['telefone', 'phone', 'fone', 'celular', 'whatsapp', 'tel', 'telefones'],
-  nome_estabelecimento: ['nome_estabelecimento', 'estabelecimento', 'nome', 'empresa', 'razao_social', 'razão_social', 'razao social', 'razão social', 'nome fantasia', 'nome_fantasia'],
-  cnpj: ['cnpj'],
-  nome_proprietario: ['nome_proprietario', 'proprietario', 'proprietário', 'responsavel', 'responsável', 'socios', 'sócios']
+  telefone:             ['telefone', 'phone', 'fone', 'celular', 'whatsapp', 'tel', 'telefones'],
+  nome_estabelecimento: ['nome_estabelecimento', 'estabelecimento', 'nome', 'empresa', 'razao_social', 'razão_social', 'razao social', 'razão social', 'razao social', 'nome fantasia', 'nome_fantasia'],
+  cnpj:                 ['cnpj'],
+  nome_proprietario:    ['nome_proprietario', 'proprietario', 'proprietário', 'responsavel', 'responsável', 'socios', 'sócios'],
+  logradouro:           ['logradouro', 'endereco', 'endereço', 'rua', 'av', 'avenida'],
+  numero:               ['numero', 'número', 'num', 'nº'],
+  cep:                  ['cep'],
+  bairro:               ['bairro'],
+  municipio:            ['municipio', 'município', 'cidade'],
+  uf:                   ['uf', 'estado']
 };
 
 function normalize(key) {
@@ -420,11 +431,17 @@ function mapColumns(headers) {
     }
   });
 
-  // Fallback por posição para o formato padrão do Excel exportado
-  // Col A(0)=CNPJ, Col D(3)=Razao Social, Col T(19)=Telefones
-  if (map.cnpj === undefined && headers.length > 0) map.cnpj = 0;
-  if (map.nome_estabelecimento === undefined && headers.length > 3) map.nome_estabelecimento = 3;
-  if (map.telefone === undefined && headers.length > 19) map.telefone = 19;
+  // Fallback por posição para o Excel padrão exportado
+  // A=CNPJ, D=Razao Social, L=Logradouro, M=Numero, O=CEP, P=Bairro, Q=Municipio, R=UF, T=Telefones
+  if (map.cnpj === undefined && headers.length > 0)  map.cnpj = 0;
+  if (map.nome_estabelecimento === undefined && headers.length > 3)  map.nome_estabelecimento = 3;
+  if (map.logradouro === undefined && headers.length > 11) map.logradouro = 11;
+  if (map.numero === undefined && headers.length > 12)     map.numero = 12;
+  if (map.cep === undefined && headers.length > 14)        map.cep = 14;
+  if (map.bairro === undefined && headers.length > 15)     map.bairro = 15;
+  if (map.municipio === undefined && headers.length > 16)  map.municipio = 16;
+  if (map.uf === undefined && headers.length > 17)         map.uf = 17;
+  if (map.telefone === undefined && headers.length > 19)   map.telefone = 19;
 
   return map;
 }
@@ -453,20 +470,20 @@ function normalizePhone(raw) {
 
   // Já tem DDI 55
   if (digits.startsWith('55')) {
-    // 55 + DDD (2) + 8 ou 9 dígitos = 12 ou 13
     if (digits.length === 12 || digits.length === 13) {
-      return { number: digits, fixed: original !== digits };
+      const out = '+' + digits;
+      return { number: out, fixed: original !== digits };
     }
   }
 
-  // Sem DDI: DDD (2) + número
+  // Sem DDI: DDD (2) + 8 ou 9 dígitos
   if (digits.length === 10 || digits.length === 11) {
-    return { number: '55' + digits, fixed: true };
+    return { number: '+55' + digits, fixed: true };
   }
 
-  // Talvez tenha 55 mas número sem 9 na frente (formato antigo)
+  // Formato antigo sem 9 na frente
   if (digits.startsWith('55') && digits.length === 12) {
-    return { number: digits, fixed: false };
+    return { number: '+' + digits, fixed: false };
   }
 
   // Não deu pra normalizar
@@ -486,11 +503,19 @@ function processData(rows, headers) {
   let fixedCount = 0;
 
   rows.forEach((row, idx) => {
-    const lineNum = idx + 2; // linha real no arquivo (1=header)
-    const nome = colMap.nome_estabelecimento !== undefined ? String(row[colMap.nome_estabelecimento] || '').trim() : '';
+    const lineNum = idx + 2;
+    const get = (field) => colMap[field] !== undefined ? String(row[colMap[field]] || '').trim() : '';
+
+    const nome = get('nome_estabelecimento');
     const rawPhone = colMap.telefone !== undefined ? row[colMap.telefone] : '';
-    const cnpj = cleanCNPJ(colMap.cnpj !== undefined ? row[colMap.cnpj] : '');
-    const prop = colMap.nome_proprietario !== undefined ? String(row[colMap.nome_proprietario] || '').trim() : '';
+    const cnpj = cleanCNPJ(get('cnpj'));
+    const prop = get('nome_proprietario');
+    const logradouro = get('logradouro');
+    const numero = get('numero');
+    const cep = get('cep');
+    const bairro = get('bairro');
+    const municipio = get('municipio');
+    const uf = get('uf');
 
     if (!nome) {
       errors.push(`Linha ${lineNum}: sem nome_estabelecimento — descartado`);
@@ -507,13 +532,11 @@ function processData(rows, headers) {
     if (fixed) fixedCount++;
 
     ok.push({
-      lineNum,
+      lineNum, fixed,
       telefone: number,
       telefoneOriginal: String(rawPhone || '').trim(),
       nome_estabelecimento: nome,
-      cnpj,
-      nome_proprietario: prop,
-      fixed
+      cnpj, prop, logradouro, numero, cep, bairro, municipio, uf
     });
   });
 
@@ -531,13 +554,13 @@ function renderTable(ok, errors, fixedCount) {
   tbody.innerHTML = '';
 
   if (ok.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>Nenhum lead válido encontrado.</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state"><p>Nenhum lead válido encontrado.</p></div></td></tr>`;
   } else {
     ok.forEach((r, i) => {
       const statusPill = r.fixed
         ? `<span class="pill pill-fix">corrigido</span>`
         : `<span class="pill pill-ok">ok</span>`;
-      
+      const dash = `<span style="color:var(--muted)">—</span>`;
       tbody.innerHTML += `
         <tr>
           <td style="color:var(--muted)">${i + 1}</td>
@@ -546,8 +569,13 @@ function renderTable(ok, errors, fixedCount) {
             ${r.fixed ? `<span class="tag-original">era: ${r.telefoneOriginal}</span>` : ''}
           </td>
           <td>${r.nome_estabelecimento}</td>
-          <td>${r.cnpj || '<span style="color:var(--muted)">—</span>'}</td>
-          <td>${r.nome_proprietario || '<span style="color:var(--muted)">—</span>'}</td>
+          <td>${r.cnpj || dash}</td>
+          <td>${r.logradouro || dash}</td>
+          <td>${r.numero || dash}</td>
+          <td>${r.cep || dash}</td>
+          <td>${r.bairro || dash}</td>
+          <td>${r.municipio || dash}</td>
+          <td>${r.uf || dash}</td>
           <td>${statusPill}</td>
         </tr>`;
     });
@@ -568,14 +596,20 @@ function renderTable(ok, errors, fixedCount) {
 function exportCSV() {
   if (!processedRows.length) return;
 
-  const lines = ['telefone;nome_estabelecimento;cnpj;nome_proprietario'];
+  const lines = ['telefone;nome_estabelecimento;nome_proprietario;cnpj;logradouro;numero;cep;bairro;municipio;uf'];
   processedRows.forEach(r => {
     const row = [
       r.telefone,
       r.nome_estabelecimento,
+      r.prop,
       r.cnpj,
-      r.nome_proprietario
-    ].map(v => `"${String(v).replace(/"/g, '""')}"`);
+      r.logradouro,
+      r.numero,
+      r.cep,
+      r.bairro,
+      r.municipio,
+      r.uf
+    ].map(v => `"${String(v || '').replace(/"/g, '""')}"`);
     lines.push(row.join(';'));
   });
 
